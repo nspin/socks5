@@ -1,0 +1,48 @@
+name:                 socks5-conduit
+version:              0.1.0.0
+author:               Nick Spinale
+maintainer:           Nick Spinale <nick@nickspinale.com>
+license:              MIT
+license-file:         LICENSE
+build-type:           Simple
+cabal-version:        >=1.10
+
+library
+  default-language:   Haskell2010
+  hs-source-dirs:     src
+
+  exposed-modules:    Network.Socks5.Conduit
+                    , Network.Socks5.Socket
+                    , Data.Conduit.Serialize
+
+  build-depends:      base >=4.8 && <5
+                    , socks5-pure
+                    , async
+                    , bytestring
+                    , cereal
+                    , conduit
+                    , conduit-extra
+                    , exceptions
+                    , mtl
+                    , network
+                    , resourcet
+                    , streaming-commons
+                    , unliftio-core
+
+test-suite tests
+  type:               exitcode-stdio-1.0
+  default-language:   Haskell2010
+  hs-source-dirs:     tests
+  main-is:            Tests.hs
+  ghc-options:        -threaded
+
+  build-depends:      base >=4.8 && <5
+
+executable demo
+  default-language:   Haskell2010
+  hs-source-dirs:     demo
+  main-is:            Demo.hs
+  ghc-options:        -threaded
+  build-depends:      base >=4.8 && <5
+                    , socks5-conduit
+                    , conduit-extra
