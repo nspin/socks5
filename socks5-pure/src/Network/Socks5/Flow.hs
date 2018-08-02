@@ -60,8 +60,8 @@ socksThrow :: SocksContext m -> SocksException -> m a
 socksThrow = socksContextThrow
 
 
-socksClientJustSelectMethod :: Monad m => [SocksMethod] -> SocksContext m -> m SocksMethod
-socksClientJustSelectMethod methods ctx = do
+socksClientJustSelectMethod :: Monad m => SocksContext m -> [SocksMethod] -> m SocksMethod
+socksClientJustSelectMethod ctx methods = do
     socksSend ctx $ SocksMethodRequest methods
     SocksMethodResponse mmethod <- socksRecv ctx
     case mmethod of
@@ -71,8 +71,8 @@ socksClientJustSelectMethod methods ctx = do
             then return method
             else socksThrow ctx SocksNoAcceptibleMethodsException
 
-socksServerJustSelectMethod :: Monad m => [SocksMethod] -> SocksContext m -> m SocksMethod
-socksServerJustSelectMethod preferredMethods ctx = do
+socksServerJustSelectMethod :: Monad m => SocksContext m -> [SocksMethod] -> m SocksMethod
+socksServerJustSelectMethod ctx preferredMethods = do
     SocksMethodRequest clientMethods <- socksRecv ctx
     case filter (`elem` preferredMethods) clientMethods of
         [] -> do
@@ -82,16 +82,16 @@ socksServerJustSelectMethod preferredMethods ctx = do
             socksSend ctx $ SocksMethodResponse (Just method)
             return method
 
-socksClientJustAuthenticateWithUsernamePassword :: Monad m => SocksUsernamePassword -> SocksContext m -> m ()
-socksClientJustAuthenticateWithUsernamePassword creds ctx = do
+socksClientJustAuthenticateWithUsernamePassword :: Monad m => SocksContext m -> SocksUsernamePassword -> m ()
+socksClientJustAuthenticateWithUsernamePassword ctx creds = do
     socksSend ctx $ SocksUsernamePasswordRequest creds
     resp <- socksRecv ctx
     case resp of
         SocksUsernamePasswordResponseSuccess -> return ()
         SocksUsernamePasswordResponseFailure w -> socksThrow ctx $ SocksUsernamePasswordAuthenticationFailureException w
 
-socksServerJustAuthenticateWithUsernamePassword :: Monad m => SocksServerUsernamePasswordGuard m -> SocksContext m -> m ()
-socksServerJustAuthenticateWithUsernamePassword guard ctx = do
+socksServerJustAuthenticateWithUsernamePassword :: Monad m => SocksContext m -> SocksServerUsernamePasswordGuard m -> m ()
+socksServerJustAuthenticateWithUsernamePassword ctx guard = do
     SocksUsernamePasswordRequest creds <- socksRecv ctx
     r <- guard creds
     case r of
@@ -117,10 +117,10 @@ data SocksServerAuthenticationPreference m =
 type SocksServerUsernamePasswordGuard m = SocksUsernamePassword -> m (Maybe Word8)
 
 
-socksClientAuthenticate :: Monad m => SocksClientAuthenticationPreference -> SocksContext m -> m ()
-socksClientAuthenticate pref ctx = case pref of
+socksClientAuthenticate :: Monad m => SocksContext m -> SocksClientAuthenticationPreference -> m ()
+socksClientAuthenticate ctx pref = case pref of
     SocksClientAuthenticationPreferenceNone ->
-        void $ socksClientJustSelectMethod [SocksMethodNone] ctx
+        void $ socksClientJustSelectMethod ctx [SocksMethodNone]
     SocksClientAuthenticationPreferenceUsernamePassword creds ->
         go creds [SocksMethodUsernamePassword]
     SocksClientAuthenticationPreferenceNoneOrUsernamePassword creds ->
@@ -129,16 +129,16 @@ socksClientAuthenticate pref ctx = case pref of
         go creds [SocksMethodUsernamePassword, SocksMethodNone]
   where
     go creds methods = do
-        method <- socksClientJustSelectMethod methods ctx
+        method <- socksClientJustSelectMethod ctx methods
         case method of
             SocksMethodNone -> return ()
-            SocksMethodUsernamePassword -> socksClientJustAuthenticateWithUsernamePassword creds ctx
+            SocksMethodUsernamePassword -> socksClientJustAuthenticateWithUsernamePassword ctx creds
 
-socksServerAuthenticate :: Monad m => SocksServerAuthenticationPreference m -> SocksContext m -> m ()
-socksServerAuthenticate pref ctx = do
+socksServerAuthenticate :: Monad m => SocksContext m -> SocksServerAuthenticationPreference m -> m ()
+socksServerAuthenticate ctx pref = do
   case pref of
     SocksServerAuthenticationPreferenceNone ->
-        void $ socksServerJustSelectMethod [SocksMethodNone] ctx
+        void $ socksServerJustSelectMethod ctx [SocksMethodNone]
     SocksServerAuthenticationPreferenceUsernamePassword rule ->
         go rule [SocksMethodUsernamePassword]
     SocksServerAuthenticationPreferenceNoneOrUsernamePassword rule ->
@@ -147,18 +147,18 @@ socksServerAuthenticate pref ctx = do
         go rule [SocksMethodUsernamePassword, SocksMethodNone]
   where
     go rule methods = do
-        method <- socksServerJustSelectMethod methods ctx
+        method <- socksServerJustSelectMethod ctx methods
         case method of
             SocksMethodNone -> return ()
-            SocksMethodUsernamePassword -> socksServerJustAuthenticateWithUsernamePassword rule ctx
+            SocksMethodUsernamePassword -> socksServerJustAuthenticateWithUsernamePassword ctx rule
 
 
 socksClientJustCommand :: Monad m
-                       => SocksCommand
+                       => SocksContext m
+                       -> SocksCommand
                        -> SocksEndpoint
-                       -> SocksContext m
                        -> m SocksEndpoint
-socksClientJustCommand command endpoint ctx = do
+socksClientJustCommand ctx command endpoint = do
     socksSend ctx $ SocksRequest command endpoint
     SocksResponse resp <- socksRecv ctx
     case resp of
@@ -166,11 +166,11 @@ socksClientJustCommand command endpoint ctx = do
         Right bound -> return bound
 
 socksClientCommand :: Monad m
-                   => SocksClientAuthenticationPreference
+                   => SocksContext m
+                   -> SocksClientAuthenticationPreference
                    -> SocksCommand
                    -> SocksEndpoint
-                   -> SocksContext m
                    -> m SocksEndpoint
-socksClientCommand pref command endpoint = do
-    socksClientAuthenticate pref
-    socksClientJustCommand command endpoint
+socksClientCommand ctx pref command endpoint = do
+    socksClientAuthenticate ctx pref
+    socksClientJustCommand ctx command endpoint

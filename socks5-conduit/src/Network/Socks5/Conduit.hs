@@ -31,7 +31,7 @@ socksServer serverSettings =
 
 socksServerConnect :: (MonadUnliftIO m, MonadCatch m, MonadThrow m, MonadResource m) => (ByteString -> m ()) -> ConduitT ByteString o m (Socket, SockAddr)
 socksServerConnect send = do
-    socksServerAuthenticate SocksServerAuthenticationPreferenceNone ctx
+    socksServerAuthenticate ctx SocksServerAuthenticationPreferenceNone
     req <- socksRecv ctx
     case req of
         SocksRequest SocksCommandConnect endpoint@(SocksEndpoint (SocksHostName host) port) -> do
