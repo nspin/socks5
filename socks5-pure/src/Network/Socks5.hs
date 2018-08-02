@@ -8,6 +8,7 @@ module Network.Socks5
     , socksRecv
     , socksThrow
 
+    , socksClientConnect
     , socksClientCommand
     , socksClientAuthenticate
     , socksServerAuthenticate

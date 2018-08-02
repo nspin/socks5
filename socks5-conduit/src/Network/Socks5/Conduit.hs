@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Socks5.Conduit
-    ( socksServer
+    ( socksClient
+    , socksServer
     ) where
 
 import Control.Concurrent.Async
@@ -18,16 +19,19 @@ import Network.Socket (Socket, SockAddr, close)
 import Network.Socks5
 import Network.Socks5.Socket
 
+socksClient :: (MonadUnliftIO m, MonadCatch m, MonadThrow m) => ClientSettings -> SocksEndpoint -> (SocksEndpoint -> (ByteString -> IO ()) -> ConduitT ByteString Void m a) -> m a
+socksClient set endpoint f = runGeneralTCPClient set $ \appData -> do
+    let ctx = SocksContext send sinkGet throwM
+        send = liftIO . appWrite appData
+    (fromServer, bound) <- appSource appData $$+ socksClientConnect ctx SocksClientAuthenticationPreferenceNone endpoint
+    fromServer $$+- f bound (appWrite appData)
 
 socksServer :: (MonadUnliftIO m, MonadCatch m, MonadThrow m) => ServerSettings -> m ()
-socksServer serverSettings =
-    runGeneralTCPServer serverSettings $ \appData ->
-        runResourceT $ do
-            (fromClient, (sock, addr)) <- appSource appData $$+ socksServerConnect (liftIO . appWrite appData)
-            withRunInIO $ \run -> concurrently_
-                (run (sourceSocket sock `connect` appSink appData))
-                (run (fromClient $$+- sinkSocket sock))
-
+socksServer set = runGeneralTCPServer set $ \appData -> runResourceT $ do
+    (fromClient, (sock, addr)) <- appSource appData $$+ socksServerConnect (liftIO . appWrite appData)
+    withRunInIO $ \run -> concurrently_
+        (run (sourceSocket sock `connect` appSink appData))
+        (run (fromClient $$+- sinkSocket sock))
 
 socksServerConnect :: (MonadUnliftIO m, MonadCatch m, MonadThrow m, MonadResource m) => (ByteString -> m ()) -> ConduitT ByteString o m (Socket, SockAddr)
 socksServerConnect send = do

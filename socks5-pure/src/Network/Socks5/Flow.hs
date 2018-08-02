@@ -20,6 +20,7 @@ module Network.Socks5.Flow
     , SocksServerAuthenticationPreference(..)
     , SocksServerUsernamePasswordGuard
 
+    , socksClientConnect
     , socksClientCommand
     , socksClientJustCommand
 
@@ -174,3 +175,6 @@ socksClientCommand :: Monad m
 socksClientCommand ctx pref command endpoint = do
     socksClientAuthenticate ctx pref
     socksClientJustCommand ctx command endpoint
+
+socksClientConnect :: Monad m => SocksContext m -> SocksClientAuthenticationPreference -> SocksEndpoint -> m SocksEndpoint
+socksClientConnect ctx pref = socksClientCommand ctx pref SocksCommandConnect
