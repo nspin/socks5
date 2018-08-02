@@ -16,6 +16,7 @@ module Network.Socks5
     , SocksClientAuthenticationPreference(..)
     , SocksServerAuthenticationPreference(..)
     , SocksServerUsernamePasswordGuard
+    , mapServerAuthenticationPreference
 
     ) where
 

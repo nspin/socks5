@@ -19,6 +19,7 @@ module Network.Socks5.Flow
     , SocksClientAuthenticationPreference(..)
     , SocksServerAuthenticationPreference(..)
     , SocksServerUsernamePasswordGuard
+    , mapServerAuthenticationPreference
 
     , socksClientConnect
     , socksClientCommand
@@ -115,6 +116,7 @@ data SocksServerAuthenticationPreference m =
     | SocksServerAuthenticationPreferenceNoneOrUsernamePassword (SocksServerUsernamePasswordGuard m)
     | SocksServerAuthenticationPreferenceUsernamePasswordOrNone (SocksServerUsernamePasswordGuard m)
 
+-- TODO: Include information about the client connection, provided through SocksContext.
 type SocksServerUsernamePasswordGuard m = SocksUsernamePassword -> m (Maybe Word8)
 
 
@@ -136,22 +138,21 @@ socksClientAuthenticate ctx pref = case pref of
             SocksMethodUsernamePassword -> socksClientJustAuthenticateWithUsernamePassword ctx creds
 
 socksServerAuthenticate :: Monad m => SocksContext m -> SocksServerAuthenticationPreference m -> m ()
-socksServerAuthenticate ctx pref = do
-  case pref of
+socksServerAuthenticate ctx pref = case pref of
     SocksServerAuthenticationPreferenceNone ->
         void $ socksServerJustSelectMethod ctx [SocksMethodNone]
-    SocksServerAuthenticationPreferenceUsernamePassword rule ->
-        go rule [SocksMethodUsernamePassword]
-    SocksServerAuthenticationPreferenceNoneOrUsernamePassword rule ->
-        go rule [SocksMethodNone, SocksMethodUsernamePassword]
-    SocksServerAuthenticationPreferenceUsernamePasswordOrNone rule ->
-        go rule [SocksMethodUsernamePassword, SocksMethodNone]
+    SocksServerAuthenticationPreferenceUsernamePassword guard ->
+        go guard [SocksMethodUsernamePassword]
+    SocksServerAuthenticationPreferenceNoneOrUsernamePassword guard ->
+        go guard [SocksMethodNone, SocksMethodUsernamePassword]
+    SocksServerAuthenticationPreferenceUsernamePasswordOrNone guard ->
+        go guard [SocksMethodUsernamePassword, SocksMethodNone]
   where
-    go rule methods = do
+    go guard methods = do
         method <- socksServerJustSelectMethod ctx methods
         case method of
             SocksMethodNone -> return ()
-            SocksMethodUsernamePassword -> socksServerJustAuthenticateWithUsernamePassword ctx rule
+            SocksMethodUsernamePassword -> socksServerJustAuthenticateWithUsernamePassword ctx guard
 
 
 socksClientJustCommand :: Monad m
@@ -178,3 +179,11 @@ socksClientCommand ctx pref command endpoint = do
 
 socksClientConnect :: Monad m => SocksContext m -> SocksClientAuthenticationPreference -> SocksEndpoint -> m SocksEndpoint
 socksClientConnect ctx pref = socksClientCommand ctx pref SocksCommandConnect
+
+
+mapServerAuthenticationPreference :: (SocksServerUsernamePasswordGuard m -> SocksServerUsernamePasswordGuard n) -> SocksServerAuthenticationPreference m -> SocksServerAuthenticationPreference n
+mapServerAuthenticationPreference f guard = case guard of
+    SocksServerAuthenticationPreferenceNone -> SocksServerAuthenticationPreferenceNone
+    SocksServerAuthenticationPreferenceUsernamePassword m -> SocksServerAuthenticationPreferenceUsernamePassword (f m)
+    SocksServerAuthenticationPreferenceNoneOrUsernamePassword m -> SocksServerAuthenticationPreferenceNoneOrUsernamePassword (f m)
+    SocksServerAuthenticationPreferenceUsernamePasswordOrNone m -> SocksServerAuthenticationPreferenceUsernamePasswordOrNone (f m)

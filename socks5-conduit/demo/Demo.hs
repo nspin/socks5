@@ -9,10 +9,12 @@ import Data.Conduit.Combinators (stdout)
 import Data.Conduit.Network (clientSettings, serverSettings)
 
 -- main :: IO ()
--- main = socksServer (serverSettings 8080 "localhost")
+-- main = socksServer pref (serverSettings 8080 "localhost")
+--   where
+--     pref = SocksServerAuthenticationPreferenceUsernamePassword $ \creds -> Nothing <$ print creds
 
 main :: IO ()
-main = socksClient set endpoint $ \_ send -> do
+main = socksClient SocksClientAuthenticationPreferenceNone set endpoint $ \_ send -> do
     let sendLine line = lift $ send line >> send "\r\n"
     sendLine "GET / HTTP/1.1"
     sendLine "Host: ipecho.nickspinale.com"
