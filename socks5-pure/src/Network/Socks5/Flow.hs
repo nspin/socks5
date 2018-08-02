@@ -1,30 +1,32 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module Network.Socks5.Flow
-    ( SocksException(..)
-
+    (
+      SocksException(..)
     , SocksContext(..)
 
-    , socksClientAuthenticate
     , socksClientJustSelectMethod
-    , socksClientJustAuthenticateWithUsernamePassword
-
-    , socksServerAuthenticate
     , socksServerJustSelectMethod
+    , socksClientJustAuthenticateWithUsernamePassword
     , socksServerJustAuthenticateWithUsernamePassword
-
-    , SocksClientAuthenticationPreference(..)
-    , SocksServerAuthenticationPreference(..)
-    , SocksServerUsernamePasswordGuard
-    , mapServerAuthenticationPreference
-
-    , socksClientConnect
-    , socksClientCommand
     , socksClientJustCommand
-
-    , socksServerAuthenticateConnect
     , socksServerSuccess
     , socksServerFailure
+
+    , socksClientCommand
+    , socksClientConnect
+    , socksClientAuthenticate
+    , SocksClientAuthenticationPreference(..)
+
+    , socksServerAuthenticate
+    , socksServerAuthenticateConnect
+    , SocksServerUsernamePasswordGuard
+    , SocksAuthenticationPreference(..)
+    , SocksAuthenticationPreferenceNone(..)
+    , SocksAuthenticationPreferenceUsernamePassword(..)
+    , SocksAuthenticationPreferenceNoneOrUsernamePassword(..)
+    , SocksAuthenticationPreferenceUsernamePasswordOrNone(..)
 
     ) where
 
@@ -92,32 +94,35 @@ socksClientJustAuthenticateWithUsernamePassword ctx creds = do
         SocksUsernamePasswordResponseSuccess -> return ()
         SocksUsernamePasswordResponseFailure w -> socksThrow ctx $ SocksUsernamePasswordAuthenticationFailureException w
 
-socksServerJustAuthenticateWithUsernamePassword :: Monad m => SocksContext m -> SocksServerUsernamePasswordGuard m -> m ()
+socksServerJustAuthenticateWithUsernamePassword :: Monad m => SocksContext m -> SocksServerUsernamePasswordGuard m a -> m a
 socksServerJustAuthenticateWithUsernamePassword ctx guard = do
     SocksUsernamePasswordRequest creds <- socksRecv ctx
     r <- guard creds
     case r of
-        Nothing -> socksSend ctx SocksUsernamePasswordResponseSuccess
-        Just w -> do
+        Right a -> a <$ socksSend ctx SocksUsernamePasswordResponseSuccess
+        Left w -> do
             socksSend ctx $ SocksUsernamePasswordResponseFailure w
             socksThrow ctx $ SocksUsernamePasswordAuthenticationFailureException w
 
+socksClientJustCommand :: Monad m
+                       => SocksContext m
+                       -> SocksCommand
+                       -> SocksEndpoint
+                       -> m SocksEndpoint
+socksClientJustCommand ctx command endpoint = do
+    socksSend ctx $ SocksRequest command endpoint
+    resp <- socksRecv ctx
+    case resp of
+        SocksResponseSuccess bound -> return bound
+        SocksResponseFailure failure -> socksThrow ctx $ SocksReplyFailureException failure
 
-data SocksClientAuthenticationPreference =
-      SocksClientAuthenticationPreferenceNone
-    | SocksClientAuthenticationPreferenceUsernamePassword SocksUsernamePassword
-    | SocksClientAuthenticationPreferenceNoneOrUsernamePassword SocksUsernamePassword
-    | SocksClientAuthenticationPreferenceUsernamePasswordOrNone SocksUsernamePassword
-    deriving (Show, Eq)
+socksServerSuccess :: Monad m => SocksContext m -> SocksEndpoint -> m ()
+socksServerSuccess ctx endpoint = socksSend ctx $ SocksResponseSuccess endpoint
 
-data SocksServerAuthenticationPreference m =
-      SocksServerAuthenticationPreferenceNone
-    | SocksServerAuthenticationPreferenceUsernamePassword (SocksServerUsernamePasswordGuard m)
-    | SocksServerAuthenticationPreferenceNoneOrUsernamePassword (SocksServerUsernamePasswordGuard m)
-    | SocksServerAuthenticationPreferenceUsernamePasswordOrNone (SocksServerUsernamePasswordGuard m)
-
--- TODO: Include information about the client connection, provided through SocksContext.
-type SocksServerUsernamePasswordGuard m = SocksUsernamePassword -> m (Maybe Word8)
+socksServerFailure :: Monad m => SocksContext m -> SocksReplyFailure -> m a
+socksServerFailure ctx failure = do
+    socksSend ctx $ SocksResponseFailure failure
+    socksThrow ctx $ SocksReplyFailureException failure
 
 
 socksClientAuthenticate :: Monad m => SocksContext m -> SocksClientAuthenticationPreference -> m ()
@@ -137,38 +142,6 @@ socksClientAuthenticate ctx pref = case pref of
             SocksMethodNone -> return ()
             SocksMethodUsernamePassword -> socksClientJustAuthenticateWithUsernamePassword ctx creds
 
-socksServerAuthenticate :: Monad m => SocksContext m -> SocksServerAuthenticationPreference m -> m SocksRequest
-socksServerAuthenticate ctx pref = do
-    case pref of
-        SocksServerAuthenticationPreferenceNone ->
-            void $ socksServerJustSelectMethod ctx [SocksMethodNone]
-        SocksServerAuthenticationPreferenceUsernamePassword guard ->
-            go guard [SocksMethodUsernamePassword]
-        SocksServerAuthenticationPreferenceNoneOrUsernamePassword guard ->
-            go guard [SocksMethodNone, SocksMethodUsernamePassword]
-        SocksServerAuthenticationPreferenceUsernamePasswordOrNone guard ->
-            go guard [SocksMethodUsernamePassword, SocksMethodNone]
-    socksRecv ctx
-  where
-    go guard methods = do
-        method <- socksServerJustSelectMethod ctx methods
-        case method of
-            SocksMethodNone -> return ()
-            SocksMethodUsernamePassword -> socksServerJustAuthenticateWithUsernamePassword ctx guard
-
-
-socksClientJustCommand :: Monad m
-                       => SocksContext m
-                       -> SocksCommand
-                       -> SocksEndpoint
-                       -> m SocksEndpoint
-socksClientJustCommand ctx command endpoint = do
-    socksSend ctx $ SocksRequest command endpoint
-    resp <- socksRecv ctx
-    case resp of
-        SocksResponseSuccess bound -> return bound
-        SocksResponseFailure failure -> socksThrow ctx $ SocksReplyFailureException failure
-
 socksClientCommand :: Monad m
                    => SocksContext m
                    -> SocksClientAuthenticationPreference
@@ -182,26 +155,73 @@ socksClientCommand ctx pref command endpoint = do
 socksClientConnect :: Monad m => SocksContext m -> SocksClientAuthenticationPreference -> SocksEndpoint -> m SocksEndpoint
 socksClientConnect ctx pref = socksClientCommand ctx pref SocksCommandConnect
 
-socksServerAuthenticateConnect :: Monad m => SocksContext m -> SocksServerAuthenticationPreference m -> m SocksEndpoint
+data SocksClientAuthenticationPreference =
+      SocksClientAuthenticationPreferenceNone
+    | SocksClientAuthenticationPreferenceUsernamePassword SocksUsernamePassword
+    | SocksClientAuthenticationPreferenceNoneOrUsernamePassword SocksUsernamePassword
+    | SocksClientAuthenticationPreferenceUsernamePasswordOrNone SocksUsernamePassword
+    deriving (Show, Eq)
+
+
+socksServerAuthenticate :: (Monad m, SocksAuthenticationPreference pref)
+                        => SocksContext m
+                        -> pref m
+                        -> m (SocksServerAuthenticationResult pref, SocksRequest)
+socksServerAuthenticate ctx pref = (,)
+    <$> socksServerAuthenticate' ctx pref
+    <*> socksRecv ctx
+
+socksServerAuthenticateConnect :: (Monad m, SocksAuthenticationPreference pref)
+                               => SocksContext m
+                               -> pref m
+                               -> m (SocksServerAuthenticationResult pref, SocksEndpoint)
 socksServerAuthenticateConnect ctx pref = do
-    req <- socksServerAuthenticate ctx pref
+    (r, req) <- socksServerAuthenticate ctx pref
     case req of
-        SocksRequest SocksCommandConnect endpoint -> return endpoint
+        SocksRequest SocksCommandConnect endpoint -> return (r, endpoint)
         SocksRequest _ _ -> do
             socksSend ctx (SocksResponseFailure SocksReplyFailureCommandNotSupported)
             socksThrow ctx (SocksReplyFailureException SocksReplyFailureCommandNotSupported)
 
-socksServerSuccess :: Monad m => SocksContext m -> SocksEndpoint -> m ()
-socksServerSuccess ctx endpoint = socksSend ctx $ SocksResponseSuccess endpoint
 
-socksServerFailure :: Monad m => SocksContext m -> SocksReplyFailure -> m a
-socksServerFailure ctx failure = do
-    socksSend ctx $ SocksResponseFailure failure
-    socksThrow ctx $ SocksReplyFailureException failure
+-- TODO: Include information about the client connection, provided through SocksContext.
+type SocksServerUsernamePasswordGuard m r = SocksUsernamePassword -> m (Either Word8 r)
 
-mapServerAuthenticationPreference :: (SocksServerUsernamePasswordGuard m -> SocksServerUsernamePasswordGuard n) -> SocksServerAuthenticationPreference m -> SocksServerAuthenticationPreference n
-mapServerAuthenticationPreference f guard = case guard of
-    SocksServerAuthenticationPreferenceNone -> SocksServerAuthenticationPreferenceNone
-    SocksServerAuthenticationPreferenceUsernamePassword m -> SocksServerAuthenticationPreferenceUsernamePassword (f m)
-    SocksServerAuthenticationPreferenceNoneOrUsernamePassword m -> SocksServerAuthenticationPreferenceNoneOrUsernamePassword (f m)
-    SocksServerAuthenticationPreferenceUsernamePasswordOrNone m -> SocksServerAuthenticationPreferenceUsernamePasswordOrNone (f m)
+data SocksAuthenticationPreferenceNone (m :: * -> *) = SocksAuthenticationPreferenceNone
+data SocksAuthenticationPreferenceUsernamePassword r m = SocksAuthenticationPreferenceUsernamePassword (SocksServerUsernamePasswordGuard m r)
+data SocksAuthenticationPreferenceNoneOrUsernamePassword r m = SocksAuthenticationPreferenceNoneOrUsernamePassword (SocksServerUsernamePasswordGuard m r)
+data SocksAuthenticationPreferenceUsernamePasswordOrNone r m = SocksAuthenticationPreferenceUsernamePasswordOrNone (SocksServerUsernamePasswordGuard m r)
+
+class SocksAuthenticationPreference (pref :: (* -> *) -> *) where
+    type SocksServerAuthenticationResult pref :: *
+    mapAuthenticationPreference :: (forall a. m a -> n a) -> pref m -> pref n
+    socksServerAuthenticate' :: Monad m => SocksContext m -> pref m -> m (SocksServerAuthenticationResult pref)
+
+instance SocksAuthenticationPreference SocksAuthenticationPreferenceNone where
+    type SocksServerAuthenticationResult SocksAuthenticationPreferenceNone = ()
+    mapAuthenticationPreference _ _ = SocksAuthenticationPreferenceNone
+    socksServerAuthenticate' ctx _ = void $ socksServerJustSelectMethod ctx [SocksMethodNone]
+
+instance SocksAuthenticationPreference (SocksAuthenticationPreferenceUsernamePassword r) where
+    type SocksServerAuthenticationResult (SocksAuthenticationPreferenceUsernamePassword r) = r
+    mapAuthenticationPreference f (SocksAuthenticationPreferenceUsernamePassword m) = SocksAuthenticationPreferenceUsernamePassword (f . m)
+    socksServerAuthenticate' ctx (SocksAuthenticationPreferenceUsernamePassword guard) = do
+        socksServerJustSelectMethod ctx [SocksMethodUsernamePassword]
+        socksServerJustAuthenticateWithUsernamePassword ctx guard
+
+instance SocksAuthenticationPreference (SocksAuthenticationPreferenceNoneOrUsernamePassword r) where
+    type SocksServerAuthenticationResult (SocksAuthenticationPreferenceNoneOrUsernamePassword r) = Maybe r
+    mapAuthenticationPreference f (SocksAuthenticationPreferenceNoneOrUsernamePassword m) = SocksAuthenticationPreferenceNoneOrUsernamePassword (f . m)
+    socksServerAuthenticate' ctx (SocksAuthenticationPreferenceNoneOrUsernamePassword guard) = socksServerAuthenticateAny ctx guard [SocksMethodNone, SocksMethodUsernamePassword]
+
+instance SocksAuthenticationPreference (SocksAuthenticationPreferenceUsernamePasswordOrNone r) where
+    type SocksServerAuthenticationResult (SocksAuthenticationPreferenceUsernamePasswordOrNone r) = Maybe r
+    mapAuthenticationPreference f (SocksAuthenticationPreferenceUsernamePasswordOrNone m) = SocksAuthenticationPreferenceUsernamePasswordOrNone (f . m)
+    socksServerAuthenticate' ctx (SocksAuthenticationPreferenceUsernamePasswordOrNone guard) = socksServerAuthenticateAny ctx guard [SocksMethodUsernamePassword, SocksMethodNone]
+
+socksServerAuthenticateAny :: Monad m => SocksContext m -> SocksServerUsernamePasswordGuard m r -> [SocksMethod] -> m (Maybe r)
+socksServerAuthenticateAny ctx guard methods = do
+    method <- socksServerJustSelectMethod ctx methods
+    case method of
+        SocksMethodNone -> return Nothing
+        SocksMethodUsernamePassword -> Just <$> socksServerJustAuthenticateWithUsernamePassword ctx guard

@@ -36,18 +36,18 @@ socksClient pref set endpoint f = runGeneralTCPClient set $ \appData -> do
     (fromServer, bound) <- appSource appData $$+ socksClientConnect ctx pref endpoint
     fromServer $$+- f bound (appWrite appData)
 
-socksServer :: (MonadUnliftIO m, MonadThrow m) => SocksServerAuthenticationPreference m -> ServerSettings -> m ()
+socksServer :: (MonadUnliftIO m, MonadThrow m, SocksAuthenticationPreference pref) => pref m -> ServerSettings -> m ()
 socksServer pref set = runGeneralTCPServer set $ \appData -> runResourceT $ do
     (fromClient, (_, sock)) <- appSource appData $$+ socksServerConnect
         (liftServerAuthenticationPreference2 pref)
-        (return . return)
+        (return (return . return))
         (SocksContext (liftIO . appWrite appData) sinkGet throwM)
     withRunInIO $ \run -> concurrently_
         (run (sourceSocket sock `connect` appSink appData))
         (run (fromClient $$+- sinkSocket sock))
 
-liftServerAuthenticationPreference :: (MonadTrans t, Monad m) => SocksServerAuthenticationPreference m -> SocksServerAuthenticationPreference (t m)
-liftServerAuthenticationPreference = mapServerAuthenticationPreference (fmap lift)
+liftServerAuthenticationPreference :: (MonadTrans t, Monad m, SocksAuthenticationPreference pref) => pref m -> pref (t m)
+liftServerAuthenticationPreference = mapAuthenticationPreference (lift)
 
-liftServerAuthenticationPreference2 :: (Monad m, MonadTrans t0, Monad (t0 m), MonadTrans t1) => SocksServerAuthenticationPreference m -> SocksServerAuthenticationPreference (t1 (t0 m))
+liftServerAuthenticationPreference2 :: (Monad m, MonadTrans t0, Monad (t0 m), MonadTrans t1, SocksAuthenticationPreference pref) => pref m -> pref (t1 (t0 m))
 liftServerAuthenticationPreference2 = liftServerAuthenticationPreference . liftServerAuthenticationPreference

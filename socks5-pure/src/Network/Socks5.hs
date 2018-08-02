@@ -14,9 +14,13 @@ module Network.Socks5
     , socksServerFailure
 
     , SocksClientAuthenticationPreference(..)
-    , SocksServerAuthenticationPreference(..)
+
+    , SocksAuthenticationPreference(SocksServerAuthenticationResult, mapAuthenticationPreference)
+    , SocksAuthenticationPreferenceNone(..)
+    , SocksAuthenticationPreferenceUsernamePassword(..)
+    , SocksAuthenticationPreferenceNoneOrUsernamePassword(..)
+    , SocksAuthenticationPreferenceUsernamePasswordOrNone(..)
     , SocksServerUsernamePasswordGuard
-    , mapServerAuthenticationPreference
 
     ) where
 

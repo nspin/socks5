@@ -17,14 +17,14 @@ import Data.ByteString.Char8 (pack, unpack)
 import Data.Maybe (fromMaybe)
 import Network.Socket
 
-socksServerConnect :: MonadResource m
-                   => SocksServerAuthenticationPreference m
-                   -> (SocksEndpoint -> m (Maybe SocksEndpoint))
+socksServerConnect :: (MonadResource m, SocksAuthenticationPreference pref)
+                   => pref m
+                   -> (SocksServerAuthenticationResult pref -> SocksEndpoint -> m (Maybe SocksEndpoint))
                    -> SocksContext m
                    -> m (ReleaseKey, Socket)
 socksServerConnect pref rule ctx = do
-    me <- socksServerAuthenticateConnect ctx (pref) >>= rule
-    case me of
+    mremote <- socksServerAuthenticateConnect ctx (pref) >>= uncurry rule
+    case mremote of
         Nothing -> socksServerFailure ctx SocksReplyFailureConnectionNotAllowedByRuleSet
         Just remote -> do
             (key, ms) <- allocateAcquire (socksacquireSocket remote)

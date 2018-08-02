@@ -11,7 +11,7 @@ import Data.Conduit.Network (clientSettings, serverSettings)
 -- main :: IO ()
 -- main = socksServer pref (serverSettings 8080 "localhost")
 --   where
---     pref = SocksServerAuthenticationPreferenceUsernamePassword $ \creds -> Nothing <$ print creds
+--     pref = SocksAuthenticationPreferenceUsernamePassword $ \creds -> Right creds <$ print creds
 
 main :: IO ()
 main = socksClient SocksClientAuthenticationPreferenceNone set endpoint $ \_ send -> do
