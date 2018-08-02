@@ -1,27 +1,36 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Socks5.Socket
-    ( socksConnectSocket
+    ( socksServerConnect
+    , socksacquireSocket
+    , socksConnectSocket
     , socksEndpointFromSockAddr
     , unsafeSocksEndpointFromSockAddr
     ) where
 
-import Network.Socket
-import Network.Socks5.Types
-import Data.Maybe (fromMaybe)
-import Data.ByteString.Char8 (pack, unpack)
-import Network.Socket
+import Network.Socks5
+
 import Control.Exception (IOException, catch, bracketOnError)
+import Control.Monad.Trans.Resource
+import Data.Acquire
+import Data.ByteString.Char8 (pack, unpack)
+import Data.Maybe (fromMaybe)
+import Network.Socket
 
-socksEndpointFromSockAddr :: SockAddr -> Maybe SocksEndpoint
-socksEndpointFromSockAddr (SockAddrInet port host) = Just $ SocksEndpoint (SocksHostIPv4 host) (fromIntegral port)
-socksEndpointFromSockAddr (SockAddrInet6 port _ (a, b, c, d) _) = Just $ SocksEndpoint (SocksHostIPv6 a b c d) (fromIntegral port)
-socksEndpointFromSockAddr _ = Nothing
-
--- | For when you're sure that SocksAddr is an IP address
-unsafeSocksEndpointFromSockAddr :: SockAddr -> SocksEndpoint
-unsafeSocksEndpointFromSockAddr = fromMaybe (error "Network.Socks5.Socket.unsafeSocksEndpointFromSockAddr: SockAddr was SockAddrUnix")
-    . socksEndpointFromSockAddr
+socksServerConnect :: MonadResource m
+                   => SocksServerAuthenticationPreference m
+                   -> (SocksEndpoint -> m (Maybe SocksEndpoint))
+                   -> SocksContext m
+                   -> m (ReleaseKey, Socket)
+socksServerConnect pref rule ctx = do
+    me <- socksServerAuthenticateConnect ctx (pref) >>= rule
+    case me of
+        Nothing -> socksServerFailure ctx SocksReplyFailureConnectionNotAllowedByRuleSet
+        Just remote -> do
+            (key, ms) <- allocateAcquire (socksacquireSocket remote)
+            case ms of
+                Nothing -> socksServerFailure ctx SocksReplyFailureHostUnreachable
+                Just (local, sock) -> (key, sock) <$ socksServerSuccess ctx local
 
 socksConnectSocket :: SocksEndpoint -> IO (Maybe (SocksEndpoint, Socket))
 socksConnectSocket (SocksEndpoint host port) = do
@@ -48,3 +57,19 @@ socksConnectSocket (SocksEndpoint host port) = do
         connect sock remote
         local <- getSocketName sock
         return (unsafeSocksEndpointFromSockAddr local, sock)
+
+socksacquireSocket :: SocksEndpoint -> Acquire (Maybe (SocksEndpoint, Socket))
+socksacquireSocket endpoint = mkAcquire (socksConnectSocket endpoint) $ \m -> case m of
+    Nothing -> return ()
+    Just (_, sock) -> close sock
+
+socksEndpointFromSockAddr :: SockAddr -> Maybe SocksEndpoint
+socksEndpointFromSockAddr (SockAddrInet port host) = Just $ SocksEndpoint (SocksHostIPv4 host) (fromIntegral port)
+socksEndpointFromSockAddr (SockAddrInet6 port _ (a, b, c, d) _) = Just $ SocksEndpoint (SocksHostIPv6 a b c d) (fromIntegral port)
+socksEndpointFromSockAddr _ = Nothing
+
+-- | For when you're sure that SocksAddr is an IP address
+unsafeSocksEndpointFromSockAddr :: SockAddr -> SocksEndpoint
+unsafeSocksEndpointFromSockAddr = fromMaybe (error msg) . socksEndpointFromSockAddr
+  where
+    msg = "Network.Socks5.Socket.unsafeSocksEndpointFromSockAddr: SockAddr was SockAddrUnix"

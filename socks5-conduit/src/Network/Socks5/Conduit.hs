@@ -16,11 +16,10 @@ import Control.Monad.Trans.Resource
 import Data.ByteString (ByteString)
 import Data.Conduit
 import Data.Acquire
-import Data.Conduit.Lift (runExceptC)
 import Data.Conduit.Network
 import Data.Conduit.Serialize
 import Data.Streaming.Network
-import Network.Socket (Socket, SockAddr, close)
+import Network.Socket (Socket)
 import Network.Socks5
 import Network.Socks5.Socket
 
@@ -39,28 +38,16 @@ socksClient pref set endpoint f = runGeneralTCPClient set $ \appData -> do
 
 socksServer :: (MonadUnliftIO m, MonadThrow m) => SocksServerAuthenticationPreference m -> ServerSettings -> m ()
 socksServer pref set = runGeneralTCPServer set $ \appData -> runResourceT $ do
-    (fromClient, (_, sock)) <- appSource appData $$+ socksServerConnect (liftServerAuthenticationPreference pref) appData
+    (fromClient, (_, sock)) <- appSource appData $$+ socksServerConnect
+        (liftServerAuthenticationPreference2 pref)
+        (return . return)
+        (SocksContext (liftIO . appWrite appData) sinkGet throwM)
     withRunInIO $ \run -> concurrently_
         (run (sourceSocket sock `connect` appSink appData))
         (run (fromClient $$+- sinkSocket sock))
 
-socksServerConnect :: (MonadThrow m, MonadResource m)
-                   => SocksServerAuthenticationPreference m
-                   -> AppData
-                   -> ConduitT ByteString o m (ReleaseKey, Socket)
-socksServerConnect pref appData = do
-    endpoint <- socksServerAuthenticateConnect ctx (liftServerAuthenticationPreference pref)
-    (key, m) <- allocateAcquire (socksAcquireSocket endpoint)
-    case m of
-        Nothing -> socksServerFailure ctx SocksReplyFailureHostUnreachable
-        Just (local, sock) -> (key, sock) <$ socksServerSuccess ctx local
-  where
-    ctx = SocksContext (liftIO . appWrite appData) sinkGet throwM
-
-socksAcquireSocket :: SocksEndpoint -> Acquire (Maybe (SocksEndpoint, Socket))
-socksAcquireSocket endpoint = mkAcquire (socksConnectSocket endpoint) $ \m -> case m of
-    Nothing -> return ()
-    Just (_, sock) -> close sock
-
 liftServerAuthenticationPreference :: (MonadTrans t, Monad m) => SocksServerAuthenticationPreference m -> SocksServerAuthenticationPreference (t m)
 liftServerAuthenticationPreference = mapServerAuthenticationPreference (fmap lift)
+
+liftServerAuthenticationPreference2 :: (Monad m, MonadTrans t0, Monad (t0 m), MonadTrans t1) => SocksServerAuthenticationPreference m -> SocksServerAuthenticationPreference (t1 (t0 m))
+liftServerAuthenticationPreference2 = liftServerAuthenticationPreference . liftServerAuthenticationPreference
