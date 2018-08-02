@@ -2,5 +2,6 @@ resolver: lts-12.4
 packages:
 - socks5-pure
 - socks5-conduit
+- ../conduit-cereal
 extra-deps:
 - sockaddr-0.0.0
