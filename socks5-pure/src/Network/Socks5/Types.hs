@@ -95,7 +95,9 @@ data SocksRequest = SocksRequest
     , socksEndpoint :: SocksEndpoint
     } deriving (Show, Eq)
 
-newtype SocksResponse = SocksResponse (Either SocksReplyFailure SocksEndpoint)
+data SocksResponse =
+      SocksResponseSuccess SocksEndpoint
+    | SocksResponseFailure SocksReplyFailure
     deriving (Show, Eq)
 
 data SocksUdpRequest = SocksUdpRequest
@@ -170,25 +172,24 @@ instance Serialize SocksRequest where
         SocksRequest command <$> getSocksEndpoint
 
 instance Serialize SocksResponse where
-    put (SocksResponse resp) = do
+    put resp = do
         putSocksVersion
         case resp of
-            Left failure -> do
-                putWord8 (socksReplyFailureAsByte failure)
-                putWord8 0
-                putSocksEndpoint (SocksEndpoint (SocksHostName mempty) 0)
-            Right endpoint -> do
+            SocksResponseSuccess endpoint -> do
                 putWord8 0
                 putWord8 0
                 putSocksEndpoint endpoint
+            SocksResponseFailure failure -> do
+                putWord8 (socksReplyFailureAsByte failure)
+                putWord8 0
+                putSocksEndpoint (SocksEndpoint (SocksHostName mempty) 0)
     get = do
         getSocksVersion
         reply <- getWord8
         getElse 0 $ const "[SocksResponse] incorrect RSV value"
         endpoint <- getSocksEndpoint
-        return . SocksResponse
-               . maybe (Right endpoint) Left
-               $ byteAsMaybeSocksReplyFailure reply
+        return . maybe (SocksResponseSuccess endpoint) SocksResponseFailure $
+            byteAsMaybeSocksReplyFailure reply
 
 instance Serialize SocksUdpRequest where
     put (SocksUdpRequest n endpoint data_) = do

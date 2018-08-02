@@ -4,14 +4,14 @@ module Network.Socks5
 
     , SocksException(..)
     , SocksContext(..)
-    , socksSend
-    , socksRecv
-    , socksThrow
 
     , socksClientConnect
     , socksClientCommand
     , socksClientAuthenticate
     , socksServerAuthenticate
+    , socksServerAuthenticateConnect
+    , socksServerSuccess
+    , socksServerFailure
 
     , SocksClientAuthenticationPreference(..)
     , SocksServerAuthenticationPreference(..)

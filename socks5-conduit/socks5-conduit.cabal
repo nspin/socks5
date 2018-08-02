@@ -45,9 +45,6 @@ executable demo
   ghc-options:        -threaded
 
   build-depends:      base >=4.8 && <5
-                    , socks5-conduit
-                    , conduit-extra
-
                     , socks5-pure
                     , socks5-conduit
                     , bytestring
