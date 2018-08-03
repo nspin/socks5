@@ -3,24 +3,32 @@
 import Network.Socks5
 import Network.Socks5.Conduit (socksClient, socksServer)
 
+import Control.Monad (replicateM_)
 import Control.Monad.Trans.Class (lift)
-import Data.ByteString (ByteString)
+import Data.ByteString.Char8 (pack)
 import Data.Conduit.Combinators (stdout)
 import Data.Conduit.Network (clientSettings, serverSettings)
-
--- main :: IO ()
--- main = socksServer pref (serverSettings 8080 "localhost")
---   where
---     pref = SocksServerAuthenticationPreferenceUsernamePassword $ \creds -> Nothing <$ print creds
+import System.CPUTime (getCPUTime)
 
 main :: IO ()
-main = socksClient SocksClientAuthenticationPreferenceNone set endpoint $ \_ send -> do
-    let sendLine line = lift $ send line >> send "\r\n"
-    sendLine "GET / HTTP/1.1"
-    sendLine "Host: ipecho.nickspinale.com"
-    sendLine "Connection: close"
-    sendLine ""
-    stdout
+main = torSocksClient
+
+torSocksClient :: IO ()
+torSocksClient = replicateM_ 10 $ do
+    t <- getCPUTime
+    let creds = SocksUsernamePassword (pack (show t)) "hunter2"
+    socksClient set (Just creds) endpoint $ \_ send -> do
+        let sendLine line = lift $ send line >> send "\r\n"
+        sendLine "GET / HTTP/1.1"
+        sendLine "Host: ipecho.nickspinale.com"
+        sendLine "Connection: close"
+        sendLine ""
+        stdout
   where
     set = clientSettings 9050 "localhost"
     endpoint = SocksEndpoint (SocksHostName "ipecho.nickspinale.com") 80
+
+lameSocksServer :: IO ()
+lameSocksServer = socksServer
+    (serverSettings 8080 "localhost")
+    (Just (SocksUsernamePassword "hunter" "hunter2"))

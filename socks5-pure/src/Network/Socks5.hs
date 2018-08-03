@@ -1,22 +1,35 @@
 module Network.Socks5
     (
-      module Network.Socks5.Types
 
-    , SocksException(..)
-    , SocksContext(..)
-
-    , socksClientConnect
+    -- * Client
+      socksClientAuthenticateNone
+    , socksClientAuthenticateUsernamePassword
     , socksClientCommand
-    , socksClientAuthenticate
-    , socksServerAuthenticate
-    , socksServerAuthenticateConnect
+
+    -- * Server
+    , socksServerAuthenticateNone
+    , socksServerGetUsernamePassword
+    , socksServerUsernamePasswordSuccess
+    , socksServerUsernamePasswordFailure
     , socksServerSuccess
     , socksServerFailure
 
-    , SocksClientAuthenticationPreference(..)
-    , SocksServerAuthenticationPreference(..)
-    , SocksServerUsernamePasswordGuard
-    , mapServerAuthenticationPreference
+    -- * Cpmtext
+    , SocksContext(..)
+    , SocksException(..)
+
+    -- Types
+    , SocksUsernamePassword(..)
+    , SocksCommand(..)
+    , SocksEndpoint(..)
+    , SocksHost(..)
+    , SocksPort
+    , SocksReplyFailure(..)
+    , SocksRequest(..)
+
+    -- * UDP
+    , SocksUdpRequest(..)
+    , SocksUdpFragmentNumber
 
     ) where
 

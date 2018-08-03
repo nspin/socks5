@@ -1,5 +1,7 @@
 module Network.Socks5.Types
     (
+
+    -- * Types
       SocksMethod(..)
     , SocksUsernamePassword(..)
     , SocksCommand(..)
@@ -192,10 +194,10 @@ instance Serialize SocksResponse where
             byteAsMaybeSocksReplyFailure reply
 
 instance Serialize SocksUdpRequest where
-    put (SocksUdpRequest n endpoint data_) = do
-        undefined
+    put _ = do
+        error "Serialize SocksUdpRequest: not yet implemented"
     get = do
-        undefined
+        error "Serialize SocksUdpRequest: not yet implemented"
 
 
 getElse :: Word8 -> (Word8 -> String) -> Get()
@@ -231,7 +233,7 @@ putSocksEndpoint (SocksEndpoint host port) = do
             putWord8 4
             putWord32be a
             putWord32be b
-            putWord32be b
+            putWord32be c
             putWord32be d
         SocksHostName name -> do
             putWord8 3
@@ -242,8 +244,8 @@ getSocksEndpoint :: Get SocksEndpoint
 getSocksEndpoint = do
     atyp <- getWord8
     endpoint <- case atyp of
-        1 -> SocksHostIPv4 <$> getWord32be
-        4 -> SocksHostIPv6 <$> getWord32be <*> getWord32be <*> getWord32be <*> getWord32be
+        1 -> SocksHostIPv4 <$> getWord32host
+        4 -> SocksHostIPv6 <$> getWord32host <*> getWord32host <*> getWord32host <*> getWord32host
         3 -> SocksHostName <$> getLengthPrefixedByteString
         _ -> fail $ "invalid ATYP in endpoint: " ++ show atyp
     SocksEndpoint endpoint <$> getWord16be

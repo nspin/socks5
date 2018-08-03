@@ -1,9 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Socks5.Socket
-    ( socksServerConnect
-    , socksacquireSocket
-    , socksConnectSocket
+    ( socksConnectSocket
+    , socksAcquireSocket
     , socksEndpointFromSockAddr
     , unsafeSocksEndpointFromSockAddr
     ) where
@@ -11,28 +10,13 @@ module Network.Socks5.Socket
 import Network.Socks5
 
 import Control.Exception (IOException, catch, bracketOnError)
-import Control.Monad.Trans.Resource
 import Data.Acquire
-import Data.ByteString.Char8 (pack, unpack)
+import Data.ByteString.Char8 (unpack)
 import Data.Maybe (fromMaybe)
 import Network.Socket
 
-socksServerConnect :: MonadResource m
-                   => SocksServerAuthenticationPreference m
-                   -> (SocksEndpoint -> m (Maybe SocksEndpoint))
-                   -> SocksContext m
-                   -> m (ReleaseKey, Socket)
-socksServerConnect pref rule ctx = do
-    me <- socksServerAuthenticateConnect ctx (pref) >>= rule
-    case me of
-        Nothing -> socksServerFailure ctx SocksReplyFailureConnectionNotAllowedByRuleSet
-        Just remote -> do
-            (key, ms) <- allocateAcquire (socksacquireSocket remote)
-            case ms of
-                Nothing -> socksServerFailure ctx SocksReplyFailureHostUnreachable
-                Just (local, sock) -> (key, sock) <$ socksServerSuccess ctx local
-
-socksConnectSocket :: SocksEndpoint -> IO (Maybe (SocksEndpoint, Socket))
+socksConnectSocket :: SocksEndpoint -- ^ Client's request
+                   -> IO (Maybe (Socket, SocksEndpoint)) -- ^ Socket to remote, along with the local address bound to it
 socksConnectSocket (SocksEndpoint host port) = do
     infos <- case host of
         SocksHostIPv4 w -> return [(AF_INET, 0, SockAddrInet (fromIntegral port) w)]
@@ -56,12 +40,12 @@ socksConnectSocket (SocksEndpoint host port) = do
     attempt (family, service, remote) = bracketOnError (mksock family service) close $ \sock -> do
         connect sock remote
         local <- getSocketName sock
-        return (unsafeSocksEndpointFromSockAddr local, sock)
+        return (sock, unsafeSocksEndpointFromSockAddr local)
 
-socksacquireSocket :: SocksEndpoint -> Acquire (Maybe (SocksEndpoint, Socket))
-socksacquireSocket endpoint = mkAcquire (socksConnectSocket endpoint) $ \m -> case m of
+socksAcquireSocket :: SocksEndpoint -> Acquire (Maybe (Socket, SocksEndpoint))
+socksAcquireSocket endpoint = mkAcquire (socksConnectSocket endpoint) $ \m -> case m of
     Nothing -> return ()
-    Just (_, sock) -> close sock
+    Just (sock, _) -> close sock
 
 socksEndpointFromSockAddr :: SockAddr -> Maybe SocksEndpoint
 socksEndpointFromSockAddr (SockAddrInet port host) = Just $ SocksEndpoint (SocksHostIPv4 host) (fromIntegral port)
