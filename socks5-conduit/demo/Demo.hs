@@ -31,5 +31,5 @@ torSocksClient = replicateM_ 10 $ do
 
 authLoggingServer :: IO ()
 authLoggingServer = socksServer
-    (serverSettings 8080 "localhost")
+    (serverSettings 8080 "*")
     (Just ((>> return True) . print))

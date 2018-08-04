@@ -125,7 +125,7 @@ instance Serialize SocksMethodRequest where
 instance Serialize SocksMethodResponse where
     put (SocksMethodResponse mmeth) = do
         putSocksVersion
-        putWord8 (maybe 0 socksMethodAsByte mmeth)
+        putWord8 (maybe 0xff socksMethodAsByte mmeth)
     get = do
         getSocksVersion
         SocksMethodResponse . byteAsMaybeSocksMethod <$> getWord8

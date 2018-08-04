@@ -45,7 +45,7 @@ socksServer set mauth = runGeneralTCPServer set $ \appData -> runResourceT $ do
     (fromClient, (_, sock)) <- appSource appData $$+ socksServerConnect
         (SocksContext (liftIO . appWrite appData) sinkGet throwM)
         ((fmap . fmap) (lift . lift) mauth)
-    withRunInIO $ \run -> concurrently_
+    withRunInIO $ \run -> race_
         (run (sourceSocket sock `connect` appSink appData))
         (run (fromClient $$+- sinkSocket sock))
 
