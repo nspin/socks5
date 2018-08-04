@@ -39,23 +39,24 @@ socksClient set mcreds endpoint f = runGeneralTCPClient set $ \appData -> do
 
 socksServer :: (MonadUnliftIO m, MonadThrow m)
             => ServerSettings
-            -> Maybe SocksUsernamePassword
+            -> Maybe (SocksUsernamePassword -> m Bool)
             -> m ()
-socksServer set mcreds = runGeneralTCPServer set $ \appData -> runResourceT $ do
+socksServer set mauth = runGeneralTCPServer set $ \appData -> runResourceT $ do
     (fromClient, (_, sock)) <- appSource appData $$+ socksServerConnect
         (SocksContext (liftIO . appWrite appData) sinkGet throwM)
-        mcreds
+        ((fmap . fmap) (lift . lift) mauth)
     withRunInIO $ \run -> concurrently_
         (run (sourceSocket sock `connect` appSink appData))
         (run (fromClient $$+- sinkSocket sock))
 
-socksServerConnect :: MonadResource m => SocksContext m -> Maybe SocksUsernamePassword -> m (ReleaseKey, Socket)
-socksServerConnect ctx mcreds = do
-    SocksRequest cmd remote <- case mcreds of
+socksServerConnect :: MonadResource m => SocksContext m -> Maybe (SocksUsernamePassword -> m Bool) -> m (ReleaseKey, Socket)
+socksServerConnect ctx mauth = do
+    SocksRequest cmd remote <- case mauth of
         Nothing -> socksServerAuthenticateNone ctx
-        Just creds -> do
-            creds' <- socksServerGetUsernamePassword ctx
-            if creds' == creds
+        Just auth -> do
+            creds <- socksServerGetUsernamePassword ctx
+            r <- auth creds
+            if r
               then socksServerUsernamePasswordSuccess ctx
               else socksServerUsernamePasswordFailure ctx
     when (cmd /= SocksCommandConnect) $

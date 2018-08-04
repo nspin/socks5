@@ -11,7 +11,8 @@ import Data.Conduit.Network (clientSettings, serverSettings)
 import System.CPUTime (getCPUTime)
 
 main :: IO ()
-main = torSocksClient
+-- main = torSocksClient
+main = authLoggingServer
 
 torSocksClient :: IO ()
 torSocksClient = replicateM_ 10 $ do
@@ -28,7 +29,7 @@ torSocksClient = replicateM_ 10 $ do
     set = clientSettings 9050 "localhost"
     endpoint = SocksEndpoint (SocksHostName "ipecho.nickspinale.com") 80
 
-lameSocksServer :: IO ()
-lameSocksServer = socksServer
+authLoggingServer :: IO ()
+authLoggingServer = socksServer
     (serverSettings 8080 "localhost")
-    (Just (SocksUsernamePassword "hunter" "hunter2"))
+    (Just ((>> return True) . print))
