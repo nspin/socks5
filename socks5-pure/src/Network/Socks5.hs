@@ -14,7 +14,7 @@ module Network.Socks5
     , socksServerSuccess
     , socksServerFailure
 
-    -- * Cpmtext
+    -- * Context
     , SocksContext(..)
     , SocksException(..)
 
